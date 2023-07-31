@@ -1,0 +1,230 @@
+# Full XOR Training Code
+# Created 10 July 2023 by Bond Headlee
+# This code will train 2 in - 2 out chips to XOR behavior.
+# This code trains one pin combo to XOR behavior before training the other ones.
+
+from pyfirmata import Arduino, util
+import numpy as np
+import time
+import pandas as pd
+import pyvisa
+import requests
+import json
+import math
+
+# Parameters
+holdvalue = 10           # This is the amount of seconds between backwards passes to allow the chip to cool.
+
+ErrorGoal = .6          # This is the percentage of current that will go through the correct pin to count as trained.
+startingvoltage = 5     # This is the lowest voltage for backwards passes.
+Vin = 3.17              # This is set to the ACTUAL input voltage from the XP Power Supply.
+samples = 1000000       # Set the number of voltage samples we want to take on each pin
+
+# Configuration to read from Power Supply
+url = "http://169.254.7.107/benchInfo"
+
+# payload = 'voltage 3'
+headers = {
+    # 'Accept': '*/*',
+    # 'Accept-Encoding': 'gzip, deflate',
+    # 'Accept-Language': 'en-US,en;q=0.9',
+    'Connection': 'keep-alive'
+    # 'Content-type': 'application/x-www-form-urlencoded',
+    # 'Host': '169.254.7.107',
+    # 'Origin': 'http://169.254.7.107',
+    # 'Referer': 'http://169.254.7.107/protected/control.html',
+    # 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+}
+
+# Configuration to write to Power Supply
+rm = pyvisa.ResourceManager()
+rm.list_resources()
+supply = rm.open_resource('TCPIP0::169.254.7.107::8003::SOCKET')    # Put your device IDs here
+supply.write('output OFF')  # Set the voltage
+supply.write('current 0.2')
+
+# Configuration for the Arduino and necessary output pins.
+board = Arduino('COM3')
+SSR1 = 2
+SSR4 = 3
+SSR5 = 4
+RR1 = 5
+RR4 = 6
+RR5 = 7
+RR8 = 8
+def MeasureCurrent(pinmode):  # Set the pin mode/pin combination. Mode 1 = 01, Mode 2 = 10, Mode 3 = 11.
+
+    # Turn on all the SSR which sends power to both pins and connects to analog input pins.
+    supply.write('voltage 3.3')
+    time.sleep(1)
+    board.digital[SSR1].write(pinmode % 2)  # Switch for input 1
+    board.digital[SSR4].write(pinmode // 2)  # Switch for input 2
+    board.digital[SSR5].write(1)  # Connect the outputs to the Arduino inputs
+
+    voltage = np.zeros((2, samples))  # Create a zeroes array to fill with the voltage samples
+
+    # While loop
+    for i in range(2):  # This loops through both output pins
+        time.sleep(.1)
+        for j in range(samples):  # How often are we sampling??????
+            voltage[i, j] = board.analog[i].read()  # Sample from the analog input and store the value in an array
+
+    # Extract individual voltage measurements from Voltage array
+    V1 = np.mean(voltage[0, :])
+    if V1 < .001:
+        V1 = 0
+    else:
+        V1 = 5 * V1 + .0625 * 25 * V1 * V1 + .0908 * 5 * V1 + .0098  # Scale and adjust for diode voltage drop.
+
+    V2 = np.mean(voltage[1, :])
+    if V2 < .001:
+        V2 = 0
+    else:
+        V2 = 5 * V2 + .0625 * 25 * V2 * V2 + .0908 * 5 * V2 + .0098  # Scale and adjust for diode voltage drop.
+
+    Ratio = V1 / (V1 + V2)
+    # Turn off all logic pins
+    board.digital[SSR1].write(0)
+    board.digital[SSR4].write(0)
+    board.digital[SSR5].write(0)
+    return Ratio
+def CheckXOR(rat, index):
+
+    # Determine if the percentage of current flowing through each pin matches XOR behavior and required hysteresis.
+    if index < 3:
+        if rat > ErrorGoal:
+            return True, rat
+        else:
+            return False, rat
+    else:
+        if rat > (1 - ErrorGoal):
+            return True, (1 - rat)
+        else:
+            return False, (1 - rat)
+def ReadCurrent():
+    time.sleep(.5)
+    response = requests.request("POST", url, headers=headers)
+    output = response.text.split(';')
+    current = output[13]
+    current = current[0:5]
+    return current
+def BackwardsPass():
+    icurrent = float(ReadCurrent())    # Current current value
+    v = startingvoltage * 100    # The voltage is multiplied by 100 and then divided by 100 to avoid floating point erro
+    supply.write('voltage ' + str(v / 100))
+    i1 = 0
+    i2 = 0
+    i3 = 0
+    i4 = 0
+    while i4 <= icurrent:
+        supply.write('voltage ' + str(v / 100))
+        i4 = i3
+        i3 = i2
+        i2 = i1
+        i1 = icurrent
+        icurrent = float(ReadCurrent())
+        v += 25
+        if v > 4000:
+            end()
+
+    holdtime = hold()
+    print('Hold Voltage: ', ((v - 25) / 100), 'V. Hold time: ', holdtime, ' seconds.')
+    supply.write('output OFF')  # Set the voltage
+    time.sleep(holdtime * 2)  # Allow the chip to cool off between trainings.
+    supply.write('output ON')  # Set the voltage
+def hold():
+    timer = 0
+    count = 0
+    inow = 1
+    while counter < holdvalue and timer < 60:
+        time.sleep(1)
+        timer += 1
+        iprev = inow
+        inow = float(ReadCurrent())
+        if inow == iprev:
+            counter += 1
+        elif inow < iprev:
+            counter = 0
+    return timer
+def end():  # This function turns everything off and quits.
+    off()
+    print('The program has successfully ended.')
+    quit()
+def off():  # This turns off all logic pins and the power supply.
+    board.digital[SSR1].write(0)
+    board.digital[SSR4].write(0)
+    board.digital[SSR5].write(0)
+    board.digital[RR1].write(0)
+    board.digital[RR4].write(0)
+    board.digital[RR5].write(0)
+    board.digital[RR8].write(0)
+    supply.write('output OFF')
+
+if __name__ == "__main__":
+    off()               # Disable all logic pins before beginning to avoid logic errors.
+    pins = (1, 2, 3)    # Creates an array used for running through pin combinations.
+    total_XOR = False
+    ratio_ar = (0.0, 0.0, 0.0)   # Creates an array used for the current ratios.
+    ratio_ar = np.array(ratio_ar)
+    worst_pin = 0
+
+    # Configure Arduino for analog input
+    it = util.Iterator(board)
+    it.start()
+    board.analog[0].enable_reporting()
+    board.analog[1].enable_reporting()
+
+    supply.write('output ON')   # Turn on the power supply
+
+    while not total_XOR:  # Executes when at least 1 pin does not exhibit XOR behavior.
+        total_XOR = True
+        for i in pins:  # Measure the current for each pin combination and checks current and XOR behavior.
+            current = MeasureCurrent(i)
+            XOR = CheckXOR(current, i)
+
+            if not XOR[0]:
+                total_XOR = False
+
+            ratio_ar[i - 1] = float(XOR[1])
+
+        if not total_XOR:   # This loop will train the chip by performing a backwards pass on the worst pin combination.
+
+            lowest_ratio = np.min(ratio_ar)
+            RMSE = math.sqrt((((1 - ratio_ar[0]) ** 2) + ((1 - ratio_ar[1]) ** 2) + ((1 - ratio_ar[2]) ** 2)) / 3)
+            print(ratio_ar, 'The RMSE is: ', RMSE)
+            worst_pin = np.where(ratio_ar == lowest_ratio)   # Find the pin combination that is farthest from XOR
+            training_pin = worst_pin[0] + 1
+            retrain = False
+            while not retrain:
+                match training_pin[0]:    # Run the backwards pass.
+                    case 1:
+                        board.digital[RR5].write(1)
+                        board.digital[RR8].write(1)
+                        BackwardsPass()
+                    case 2:
+                        board.digital[RR4].write(1)
+                        board.digital[RR8].write(1)
+                        BackwardsPass()
+                    case 3:
+                        board.digital[RR1].write(1)
+                        board.digital[RR4].write(1)
+                        board.digital[RR5].write(1)
+                        BackwardsPass()
+                    case _:
+                        print('Error with worst pin lol')
+                # Disable all backwards pass relays
+                board.digital[RR1].write(0)
+                board.digital[RR4].write(0)
+                board.digital[RR5].write(0)
+                board.digital[RR8].write(0)
+                # Recheck the trained pin for XOR behavior
+                current = MeasureCurrent(training_pin)
+                XOR = CheckXOR(current, training_pin)
+                retrain = XOR[0]
+                for i in pins:  # Measure the current for each pin combination and checks current and XOR behavior.
+                    current = MeasureCurrent(i)
+                    XOR = CheckXOR(current, i)
+                    ratio_ar[i - 1] = float(XOR[1])
+                RMSE = math.sqrt((((1 - ratio_ar[0]) ** 2) + ((1 - ratio_ar[1]) ** 2) + ((1 - ratio_ar[2]) ** 2)) / 3)
+                print(ratio_ar, 'The RMSE is: ', RMSE)
+end()
