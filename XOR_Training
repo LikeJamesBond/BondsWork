@@ -16,7 +16,7 @@ holdvalue = 10          # This is the number of seconds the backwards pass volta
 maxepochs = 200
 
 ErrorGoal = .6          # This is the percentage of current that will go through the correct pin to count as trained.
-startingvoltage = 5     # This is the lowest voltage for backwards passes.
+startingvoltage = 12     # This is the lowest voltage for backwards passes.
 Vin = 3.14              # This is set to the ACTUAL input voltage from the XP Power Supply.
 samples = 1000000       # Set the number of voltage samples we want to take on each pin
 
@@ -112,29 +112,8 @@ def ReadCurrent():
     current = current[0:5]  # Pull out the value of the current.
     return current
 def BackwardsPass():
-    icurrent = float(ReadCurrent())    # Current current value
-    v = startingvoltage * 100    # The voltage is multiplied by 100 and then divided by 100 to avoid floating point erro
-    supply.write('voltage ' + str(v / 100))
-    i1 = 0
-    i2 = 0
-    i3 = 0
-    i4 = 0
-    while i4 <= icurrent:
-        supply.write('voltage ' + str(v / 100))
-        i4 = i3
-        i3 = i2
-        i2 = i1
-        i1 = icurrent
-        icurrent = float(ReadCurrent())
-        v += 25     # This will increment the voltages by 2.5 V per cycle.
-        if v > 5000:
-            print('Voltage limit reached.')
-            end()
-    holdtime = hold()
-    print('Hold Voltage: ', ((v - 25) / 100), 'V. Hold time: ', holdtime, ' seconds.')
-    supply.write('output OFF')  # Set the voltage
-    time.sleep(holdtime * 2)  # Allow the chip to cool off between trainings.
-    supply.write('output ON')  # Set the voltage
+    supply.write('voltage ' + str(startingvoltage))    # Hold the voltage at a set point.
+    time.sleep(holdvalue)    # Hold the voltage for a certain number of seconds.
 def hold():
     timer = 0   # Total hold time.
     counter = 0     # Hold time at current voltage.
