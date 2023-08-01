@@ -113,8 +113,6 @@ def ReadCurrent():
     return current
 def BackwardsPass():
     icurrent = float(ReadCurrent())    # Current current value
-    supply.write('voltage 12')
-    """
     v = startingvoltage * 100    # The voltage is multiplied by 100 and then divided by 100 to avoid floating point erro
     supply.write('voltage ' + str(v / 100))
     i1 = 0
@@ -128,15 +126,14 @@ def BackwardsPass():
         i2 = i1
         i1 = icurrent
         icurrent = float(ReadCurrent())
-        v += 25
+        v += 25     # This will increment the voltages by 2.5 V per cycle.
         if v > 5000:
             print('Voltage limit reached.')
             end()
-    """
     holdtime = hold()
-    # print('Hold Voltage: ', ((v - 25) / 100), 'V. Hold time: ', holdtime, ' seconds.')
+    print('Hold Voltage: ', ((v - 25) / 100), 'V. Hold time: ', holdtime, ' seconds.')
     supply.write('output OFF')  # Set the voltage
-    # time.sleep(holdtime * 2)  # Allow the chip to cool off between trainings.
+    time.sleep(holdtime * 2)  # Allow the chip to cool off between trainings.
     supply.write('output ON')  # Set the voltage
 def hold():
     timer = 0   # Total hold time.
@@ -227,6 +224,3 @@ if __name__ == "__main__":
     else:
         print('Congratulations. XOR behavior has been accomplished.')
     end()
-
-
-
