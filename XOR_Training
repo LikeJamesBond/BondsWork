@@ -111,7 +111,20 @@ def ReadCurrent():
     current = output[13]
     current = current[0:5]  # Pull out the value of the current.
     return current
-def BackwardsPass():
+def BackwardsPass(worst_pin):
+    match worst_pin:    # Turn on the proper relays.
+        case 0:
+            board.digital[RR1].write(1)
+            board.digital[RR8].write(1)
+        case 1:
+            board.digital[RR4].write(1)
+            board.digital[RR8].write(1)
+        case 2:
+            board.digital[RR1].write(1)
+            board.digital[RR4].write(1)
+            board.digital[RR5].write(1)
+        case _:
+            print('Error with worst pin lol')
     icurrent = float(ReadCurrent())    # Current current value
     v = startingvoltage * 100    # The voltage is multiplied by 100 and then divided by 100 to avoid floating point erro
     supply.write('voltage ' + str(v / 100))
@@ -133,7 +146,12 @@ def BackwardsPass():
     holdtime = hold()
     print('Hold Voltage: ', ((v - 25) / 100), 'V. Hold time: ', holdtime, ' seconds.')
     supply.write('output OFF')  # Set the voltage
-    time.sleep(holdtime * 2)  # Allow the chip to cool off between trainings.
+    # Disable all backwards pass relays
+    board.digital[RR1].write(0)
+    board.digital[RR4].write(0)
+    board.digital[RR5].write(0)
+    board.digital[RR8].write(0)
+    time.sleep(holdtime)  # Allow the chip to cool off between trainings.
     supply.write('output ON')  # Set the voltage
 def hold():
     timer = 0   # Total hold time.
@@ -198,27 +216,7 @@ if __name__ == "__main__":
             RMSE = math.sqrt((((1 - ratio_ar[0]) ** 2) + ((1 - ratio_ar[1]) ** 2) + ((1 - ratio_ar[2]) ** 2)) / 3)
             print(count, ': ', ratio_ar, 'The RMSE is: ', RMSE)
             worst_pin = np.where(ratio_ar == lowest_ratio)   # Find the pin combination that is farthest from XOR.
-            match worst_pin[0]:    # Run the backwards pass.
-                case 0:
-                    board.digital[RR1].write(1)
-                    board.digital[RR8].write(1)
-                    BackwardsPass()
-                case 1:
-                    board.digital[RR4].write(1)
-                    board.digital[RR8].write(1)
-                    BackwardsPass()
-                case 2:
-                    board.digital[RR1].write(1)
-                    board.digital[RR4].write(1)
-                    board.digital[RR5].write(1)
-                    BackwardsPass()
-                case _:
-                    print('Error with worst pin lol')
-            # Disable all backwards pass relays
-            board.digital[RR1].write(0)
-            board.digital[RR4].write(0)
-            board.digital[RR5].write(0)
-            board.digital[RR8].write(0)
+            BackwardsPass(worst_pin)
     if count >= maxepochs:
         print(maxepochs, ' cycles have been executed.')
     else:
