@@ -1,6 +1,7 @@
 # Full XOR Training Code
-# Created 3 July 2023 by Jared Bake and Bond Headlee
+# Created 7 August 2023 by Bond Headlee
 # This code will train 2 in - 2 out chips to XOR behavior.
+# The training will do a high voltage backwards pass through the worst connection and then a low voltage backwards pass through the other two.
 
 from pyfirmata import Arduino, util
 import numpy as np
@@ -16,7 +17,8 @@ holdvalue = 10          # This is the number of seconds the backwards pass volta
 maxepochs = 200
 
 ErrorGoal = .6          # This is the percentage of current that will go through the correct pin to count as trained.
-startingvoltage = 5     # This is the lowest voltage for backwards passes.
+lowvoltage = 5          # This is the low voltage for backwards passes.
+highvoltage = 20        # This is the high voltage for the destructive backwards passes.
 Vin = 3.14              # This is set to the ACTUAL input voltage from the XP Power Supply.
 samples = 1000000       # Set the number of voltage samples we want to take on each pin
 
@@ -111,8 +113,8 @@ def ReadCurrent():
     current = output[13]
     current = current[0:5]  # Pull out the value of the current.
     return current
-def BackwardsPass(worst_pin):
-    match worst_pin:    # Turn on the proper relays.
+def BackwardsPass(pin, voltage):
+    match pin:    # Turn on the proper relays.
         case 0:
             board.digital[RR1].write(1)
             board.digital[RR8].write(1)
@@ -124,52 +126,21 @@ def BackwardsPass(worst_pin):
             board.digital[RR4].write(1)
             board.digital[RR5].write(1)
         case _:
-            print('Error with worst pin lol')
-    icurrent = float(ReadCurrent())    # Current current value
-    v = startingvoltage * 100    # The voltage is multiplied by 100 and then divided by 100 to avoid floating point erro
-    supply.write('voltage ' + str(v / 100))
-    i1 = 0
-    i2 = 0
-    i3 = 0
-    i4 = 0
-    while i4 <= icurrent:
-        supply.write('voltage ' + str(v / 100))
-        i4 = i3
-        i3 = i2
-        i2 = i1
-        i1 = icurrent
-        icurrent = float(ReadCurrent())
-        v += 25     # This will increment the voltages by 2.5 V per cycle.
-        if v > 5000:
-            print('Voltage limit reached.')
-            end()
-    holdtime = hold()
-    print('Hold Voltage: ', ((v - 25) / 100), 'V. Hold time: ', holdtime, ' seconds.')
-    supply.write('output OFF')  # Set the voltage
+            board.digital[RR1].write(1)
+            board.digital[RR8].write(1)
+
+    supply.write('voltage ' + str(voltage))    # Set the voltage.
+    
+    time.sleep(holdvalue)    # Hold the voltage
+    supply.write('output OFF')  # Turn off the power
     # Disable all backwards pass relays
     board.digital[RR1].write(0)
     board.digital[RR4].write(0)
     board.digital[RR5].write(0)
     board.digital[RR8].write(0)
     time.sleep(holdtime)  # Allow the chip to cool off between trainings.
-    supply.write('output ON')  # Set the voltage
-def hold():
-    timer = 0   # Total hold time.
-    counter = 0     # Hold time at current voltage.
-    inow = 1
-    # while counter < holdvalue and timer < 60:   # This executes as long as current is decreasing within 1 minute.
-    while timer < 30:
-        time.sleep(1)
-        timer += 1
-        iprev = inow
-        inow = float(ReadCurrent())
-        if inow == iprev:
-            counter += 1
-        elif inow < iprev:
-            counter = 0
-    return timer
+    supply.write('output ON')  # Turn on the power.
 def end():  # This function turns everything off and quits.
-
     off()
     print('The program has successfully ended.')
     quit()
@@ -217,7 +188,9 @@ if __name__ == "__main__":
             print(count, ': ', ratio_ar, 'The RMSE is: ', RMSE)
             worst_pin = np.where(ratio_ar == lowest_ratio)   # Find the pin combination that is farthest from XOR.
 
-            BackwardsPass(worst_pin[0])    # Runs a backwards pass.
+            BackwardsPass(worst_pin[0], highvoltage)         # Runs a backwards pass on the bad connections.
+            BackwardsPass((worst_pin[0] + 1), lowvoltage)    # Runs a backwards pass on the good connections.
+            BackwardsPass((worst_pin[0] - 1), lowvoltage)    # Runs a backwards pass on the good connections.
 
     if count >= maxepochs:
         print(maxepochs, ' cycles have been executed.')
