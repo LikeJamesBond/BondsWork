@@ -1,6 +1,7 @@
 # Full XOR Training Code
 # Created 3 July 2023 by Jared Bake and Bond Headlee
 # This code will train 2 in - 2 out chips to XOR behavior.
+# The backwards pass uses a varied voltage and constant hold time that is set in the parameters.
 
 from pyfirmata import Arduino, util
 import numpy as np
