@@ -216,7 +216,9 @@ if __name__ == "__main__":
             RMSE = math.sqrt((((1 - ratio_ar[0]) ** 2) + ((1 - ratio_ar[1]) ** 2) + ((1 - ratio_ar[2]) ** 2)) / 3)
             print(count, ': ', ratio_ar, 'The RMSE is: ', RMSE)
             worst_pin = np.where(ratio_ar == lowest_ratio)   # Find the pin combination that is farthest from XOR.
-            BackwardsPass(worst_pin)
+
+            BackwardsPass(worst_pin[0])    # Runs a backwards pass.
+
     if count >= maxepochs:
         print(maxepochs, ' cycles have been executed.')
     else:
