@@ -104,7 +104,7 @@ def CheckXOR(rat, index):
         else:
             return False, (1 - rat)
 def ReadCurrent():
-    time.sleep(2)   # If this is shorter than 1 second, the power supply will skip voltages.
+    time.sleep(1)   # If this is shorter than 1 second, the power supply will skip voltages.
     # Read the current value from the power supply. Power supply must be open in browser.
     response = requests.request("POST", url, headers=headers)
     output = response.text.split(';')
@@ -126,32 +126,16 @@ def BackwardsPass():
         i2 = i1
         i1 = icurrent
         icurrent = float(ReadCurrent())
-        v += 25     # This will increment the voltages by 2.5 V per cycle.
+        v += 250     # This will increment the voltages by 2.5 V per cycle.
         if v > 5000:
             print('Voltage limit reached.')
             end()
-    holdtime = hold()
-    print('Hold Voltage: ', ((v - 25) / 100), 'V. Hold time: ', holdtime, ' seconds.')
-    supply.write('output OFF')  # Set the voltage
+    time.sleep(holdvalue)    # Hold at the voltage for a specified period of time.
+    print('Hold Voltage: ', ((v - 25) / 100), 'V. Hold time: ', holdvalue, ' seconds.')
+    supply.write('output OFF')  # Turn off the power to allow for cooling
     time.sleep(holdtime * 2)  # Allow the chip to cool off between trainings.
-    supply.write('output ON')  # Set the voltage
-def hold():
-    timer = 0   # Total hold time.
-    counter = 0     # Hold time at current voltage.
-    inow = 1
-    # while counter < holdvalue and timer < 60:   # This executes as long as current is decreasing within 1 minute.
-    while timer < 30:
-        time.sleep(1)
-        timer += 1
-        iprev = inow
-        inow = float(ReadCurrent())
-        if inow == iprev:
-            counter += 1
-        elif inow < iprev:
-            counter = 0
-    return timer
+    supply.write('output ON')  # Turn on the power
 def end():  # This function turns everything off and quits.
-
     off()
     print('The program has successfully ended.')
     quit()
